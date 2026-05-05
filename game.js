@@ -2,11 +2,31 @@ const SALE_DURATION_SECONDS = 60;
 const CUSTOMER_MIN_DELAY = 2000;
 const CUSTOMER_MAX_DELAY = 4000;
 const CASSIDY_SPEED = 125;
-const PLAY_AREA = {
-  minX: 36,
-  maxX: 724,
-  minY: 126,
-  maxY: 404
+
+// Each scene has its own play area and doors that warp Cassidy to other scenes.
+const SCENES = {
+  yard: {
+    label: "Yard",
+    play: { minX: 36, maxX: 724, minY: 126, maxY: 404 },
+    doors: [
+      { x: 516, y: 196, w: 60, h: 30, target: "house", spawnX: 380, spawnY: 360, label: "Enter House" },
+      { x: 592, y: 206, w: 72, h: 30, target: "garage", spawnX: 380, spawnY: 360, label: "Enter Garage" }
+    ]
+  },
+  house: {
+    label: "Inside the House",
+    play: { minX: 70, maxX: 690, minY: 130, maxY: 400 },
+    doors: [
+      { x: 340, y: 392, w: 100, h: 28, target: "yard", spawnX: 546, spawnY: 246, label: "Back to Yard" }
+    ]
+  },
+  garage: {
+    label: "Inside the Garage",
+    play: { minX: 70, maxX: 690, minY: 130, maxY: 400 },
+    doors: [
+      { x: 340, y: 392, w: 100, h: 28, target: "yard", spawnX: 628, spawnY: 256, label: "Back to Yard" }
+    ]
+  }
 };
 
 // Edit this list to change the sale items, starting stock, fair prices, and canvas positions.
@@ -18,12 +38,13 @@ const itemTemplates = [
   { id: "books", name: "Books", icon: "📚", quantity: 10, suggestedPrice: 5, x: 530, y: 288, slotLabel: "Side Spot", viewBonus: 0.85 }
 ];
 
+// Clutter spots live across all three scenes; players walk into doors to reach them.
 const clutterSpotTemplates = [
-  { itemId: "toys", x: 112, y: 176, label: "toy bin" },
-  { itemId: "books", x: 520, y: 190, label: "book box" },
-  { itemId: "clothes", x: 118, y: 314, label: "laundry basket" },
-  { itemId: "guitar", x: 520, y: 124, label: "attic guitar" },
-  { itemId: "computer", x: 520, y: 272, label: "garage computer" }
+  { itemId: "clothes", scene: "yard", x: 118, y: 314, label: "laundry basket" },
+  { itemId: "toys", scene: "house", x: 250, y: 230, label: "toy bin" },
+  { itemId: "guitar", scene: "house", x: 540, y: 200, label: "attic guitar" },
+  { itemId: "books", scene: "garage", x: 220, y: 240, label: "book box" },
+  { itemId: "computer", scene: "garage", x: 530, y: 220, label: "garage computer" }
 ];
 
 const canvas = document.getElementById("gameCanvas");
@@ -106,6 +127,8 @@ let lastFrameTime = 0;
 let clutterSpots = [];
 let cassidy = createCassidy();
 let activeMoves = new Set();
+let currentScene = "yard";
+let doorCooldownUntil = 0;
 
 function createCassidy() {
   return {
@@ -139,6 +162,8 @@ function resetGame() {
   lastFrameTime = performance.now();
   cassidy = createCassidy();
   activeMoves.clear();
+  currentScene = "yard";
+  doorCooldownUntil = 0;
 
   elements.summaryScreen.classList.add("hidden");
   elements.restartButton.classList.add("hidden");
@@ -285,6 +310,10 @@ function startSale() {
     return;
   }
 
+  if (currentScene !== "yard") {
+    enterScene("yard", 152, 248);
+  }
+
   gameState = "running";
   startTime = performance.now();
   nextCustomerAt = startTime + randomBetween(CUSTOMER_MIN_DELAY, CUSTOMER_MAX_DELAY);
@@ -322,10 +351,16 @@ function updatePrepControls() {
     elements.goalTitle.textContent = `Tag the ${nearbySpot.label}`;
     elements.goalDetails.textContent = "Press Space or the green button.";
     elements.statusText.textContent = `You're close! Tag the ${nearbySpot.label}.`;
+  } else if (activeSpot && activeSpot.scene !== currentScene) {
+    const sceneLabel = SCENES[activeSpot.scene].label;
+    elements.actionButton.textContent = `Walk to the ${sceneLabel}`;
+    elements.goalTitle.textContent = `Go to the ${sceneLabel}`;
+    elements.goalDetails.textContent = `Follow the arrow to the ${sceneLabel}, the next ${activeSpot.label} is in there.`;
+    elements.statusText.textContent = `Step on the door mat to enter the ${sceneLabel}.`;
   } else if (activeSpot) {
     elements.actionButton.textContent = `Follow Arrow to ${getClutterTemplateItem(activeSpot).name}`;
     elements.goalTitle.textContent = `Go to the ${activeSpot.label}`;
-    elements.goalDetails.textContent = `Follow the big arrow. Treasures tagged: ${readyCount}/${items.length}.`;
+    elements.goalDetails.textContent = `Follow the arrow. Treasures tagged: ${readyCount}/${items.length}.`;
     elements.statusText.textContent = `Prep quest: walk to the glowing ${activeSpot.label}.`;
   } else {
     elements.actionButton.textContent = "Prep Complete";
@@ -359,7 +394,11 @@ function handlePrepAction() {
 
   if (!spot) {
     const activeSpot = getActiveClutterSpot();
-    addLog(`Follow the yellow arrow to the ${activeSpot.label}, then tag it.`);
+    if (activeSpot && activeSpot.scene !== currentScene) {
+      addLog(`The ${activeSpot.label} is in the ${SCENES[activeSpot.scene].label}. Walk through the door!`);
+    } else if (activeSpot) {
+      addLog(`Follow the yellow arrow to the ${activeSpot.label}, then tag it.`);
+    }
     updatePrepControls();
     return;
   }
@@ -384,11 +423,19 @@ function handlePrepAction() {
 function getNearbyClutterSpot() {
   const activeSpot = getActiveClutterSpot();
 
-  if (!activeSpot || distance(cassidy.x, cassidy.y, activeSpot.x, activeSpot.y) >= 58) {
+  if (!activeSpot || activeSpot.scene !== currentScene) {
+    return null;
+  }
+
+  if (distance(cassidy.x, cassidy.y, activeSpot.x, activeSpot.y) >= 58) {
     return null;
   }
 
   return activeSpot;
+}
+
+function getDoorToScene(targetScene) {
+  return getCurrentScene().doors.find((door) => door.target === targetScene);
 }
 
 function getActiveClutterSpot() {
@@ -452,20 +499,58 @@ function updateCassidy(delta, timestamp) {
     return;
   }
 
+  const play = getCurrentScene().play;
   const length = Math.hypot(dx, dy) || 1;
   const step = (CASSIDY_SPEED * delta) / 1000;
-  cassidy.x = clamp(cassidy.x + (dx / length) * step, PLAY_AREA.minX, PLAY_AREA.maxX);
-  cassidy.y = clamp(cassidy.y + (dy / length) * step, PLAY_AREA.minY, PLAY_AREA.maxY);
+  cassidy.x = clamp(cassidy.x + (dx / length) * step, play.minX, play.maxX);
+  cassidy.y = clamp(cassidy.y + (dy / length) * step, play.minY, play.maxY);
   cassidy.walkTime += delta;
   cassidy.direction = Math.abs(dx) > Math.abs(dy)
     ? (dx > 0 ? "right" : "left")
     : (dy > 0 ? "down" : "up");
+
+  if (gameState === "setup") {
+    checkDoorTriggers(timestamp);
+  }
 
   if (gameState === "running") {
     cheerNearbyCustomer(timestamp);
   } else if (gameState === "setup") {
     updatePrepControls();
   }
+}
+
+function getCurrentScene() {
+  return SCENES[currentScene];
+}
+
+function checkDoorTriggers(timestamp) {
+  if (timestamp < doorCooldownUntil) {
+    return;
+  }
+
+  const door = getCurrentScene().doors.find((candidate) => {
+    return cassidy.x >= candidate.x
+      && cassidy.x <= candidate.x + candidate.w
+      && cassidy.y >= candidate.y
+      && cassidy.y <= candidate.y + candidate.h;
+  });
+
+  if (door) {
+    enterScene(door.target, door.spawnX, door.spawnY);
+  }
+}
+
+function enterScene(sceneId, x, y) {
+  currentScene = sceneId;
+  cassidy.x = x;
+  cassidy.y = y;
+  cassidy.isMoving = false;
+  cassidy.direction = "down";
+  doorCooldownUntil = performance.now() + 350;
+  activeMoves.clear();
+  addLog(`Cassidy walked into the ${SCENES[sceneId].label.toLowerCase()}.`);
+  updatePrepControls();
 }
 
 function cheerNearbyCustomer(timestamp) {
@@ -713,28 +798,180 @@ function addLog(message) {
 // Everything below draws original blocky pixel shapes on the canvas.
 function drawScene(timestamp) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawSkyBits(timestamp);
-  drawGrass();
-  drawHouseAndGarage();
-  drawYardDetails(timestamp);
-  drawSaleTable();
-  drawItems();
+
+  if (currentScene === "yard") {
+    drawSkyBits(timestamp);
+    drawGrass();
+    drawHouseAndGarage();
+    drawYardDetails(timestamp);
+    drawSaleTable();
+    drawItems();
+    drawDoorMats();
+  } else if (currentScene === "house") {
+    drawHouseInterior(timestamp);
+    drawExitDoor("To Yard");
+  } else if (currentScene === "garage") {
+    drawGarageInterior(timestamp);
+    drawExitDoor("To Yard");
+  }
+
   drawClutterSpots(timestamp);
   drawTargetArrow();
   drawCharacters(timestamp);
-  drawSign();
+
+  if (currentScene === "yard") {
+    drawSign();
+  }
 }
 
 function drawCharacters(timestamp) {
-  const sprites = [
-    { y: cassidy.y, draw: () => drawCassidy(timestamp) },
-    ...customers.map((customer) => ({
-      y: customer.y,
-      draw: () => drawCustomer(customer, timestamp)
-    }))
-  ];
+  const sprites = [{ y: cassidy.y, draw: () => drawCassidy(timestamp) }];
+
+  if (currentScene === "yard") {
+    customers.forEach((customer) => {
+      sprites.push({ y: customer.y, draw: () => drawCustomer(customer, timestamp) });
+    });
+  }
 
   sprites.sort((a, b) => a.y - b.y).forEach((sprite) => sprite.draw());
+}
+
+function drawDoorMats() {
+  if (gameState !== "setup") {
+    return;
+  }
+
+  getCurrentScene().doors.forEach((door) => {
+    const isHovered = cassidy.x >= door.x && cassidy.x <= door.x + door.w
+      && Math.abs(cassidy.y - (door.y + door.h)) < 50;
+    drawShadow(door.x + door.w / 2, door.y + door.h + 4, door.w * 0.8, 8, 0.18);
+    ctx.fillStyle = isHovered ? "#ffd765" : "#fff8e8";
+    ctx.fillRect(door.x, door.y, door.w, door.h);
+    ctx.strokeStyle = "#2b1d26";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(door.x, door.y, door.w, door.h);
+    ctx.fillStyle = "#2b1d26";
+    ctx.font = "bold 11px Trebuchet MS";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(door.label, door.x + door.w / 2, door.y + door.h / 2);
+  });
+}
+
+function drawExitDoor(label) {
+  const door = getCurrentScene().doors[0];
+  drawShadow(door.x + door.w / 2, door.y + door.h + 4, door.w * 0.8, 10, 0.22);
+  drawBlock(door.x, door.y - 18, door.w, door.h + 22, "#7c5132", "#5a3823", 8);
+  ctx.fillStyle = "#ffd765";
+  ctx.fillRect(door.x + door.w - 12, door.y - 4, 4, 4);
+  ctx.fillStyle = "#fff8e8";
+  ctx.font = "bold 12px Trebuchet MS";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, door.x + door.w / 2, door.y + door.h / 2);
+}
+
+function drawHouseInterior(timestamp) {
+  ctx.fillStyle = "#7e5a44";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#9d7556";
+  ctx.fillRect(0, 84, canvas.width, canvas.height - 84);
+
+  ctx.fillStyle = "#c89b7a";
+  for (let y = 90; y < canvas.height; y += 28) {
+    ctx.fillRect(0, y, canvas.width, 4);
+  }
+
+  ctx.fillStyle = "#5a3823";
+  ctx.fillRect(0, 60, canvas.width, 6);
+
+  drawShadow(180, 360, 130, 14, 0.2);
+  drawBlock(110, 290, 140, 78, "#c0825a", "#7e4f2f", 16);
+  ctx.fillStyle = "#fff8e8";
+  ctx.fillRect(126, 304, 108, 36);
+  ctx.strokeStyle = "#2b1d26";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(126, 304, 108, 36);
+  ctx.fillStyle = "#2b1d26";
+  ctx.font = "bold 10px Trebuchet MS";
+  ctx.textAlign = "center";
+  ctx.fillText("RUG", 180, 322);
+
+  drawShadow(540, 290, 90, 12, 0.2);
+  drawBlock(490, 220, 100, 70, "#3d8f3c", "#266926", 14);
+  ctx.fillStyle = "#7bdff2";
+  ctx.fillRect(498, 226, 84, 8);
+  ctx.fillStyle = "#fff8e8";
+  ctx.font = "bold 11px Trebuchet MS";
+  ctx.fillText("ATTIC STAIRS", 540, 252);
+
+  ctx.fillStyle = "rgba(255, 247, 224, 0.18)";
+  const flicker = (Math.sin(timestamp / 280) + 1) * 0.05;
+  ctx.fillStyle = `rgba(255, 247, 224, ${0.12 + flicker})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#2b1d26";
+  ctx.font = "bold 14px Trebuchet MS";
+  ctx.textAlign = "center";
+  ctx.fillText("INSIDE THE HOUSE", canvas.width / 2, 30);
+}
+
+function drawGarageInterior(timestamp) {
+  ctx.fillStyle = "#7d8086";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#a4a8ae";
+  ctx.fillRect(0, 90, canvas.width, canvas.height - 90);
+
+  ctx.fillStyle = "#5e6166";
+  for (let x = 0; x < canvas.width; x += 60) {
+    ctx.fillRect(x, 92, 4, canvas.height - 92);
+  }
+  ctx.fillStyle = "#5e6166";
+  ctx.fillRect(0, 60, canvas.width, 6);
+
+  drawShadow(canvas.width / 2, 124, 540, 24, 0.18);
+  ctx.fillStyle = "#3a3d42";
+  ctx.fillRect(40, 84, canvas.width - 80, 30);
+  ctx.fillStyle = "#5e6166";
+  for (let x = 60; x < canvas.width - 60; x += 28) {
+    ctx.fillRect(x, 90, 16, 18);
+  }
+
+  drawShadow(180, 320, 180, 14, 0.22);
+  drawBlock(110, 248, 200, 70, "#a35a3a", "#6c3520", 14);
+  ctx.fillStyle = "#fff8e8";
+  ctx.font = "bold 11px Trebuchet MS";
+  ctx.textAlign = "center";
+  ctx.fillText("WORKBENCH", 210, 282);
+
+  drawShadow(560, 286, 80, 12, 0.18);
+  drawBlock(530, 230, 60, 60, "#c98555", "#7e4f2f", 12);
+  ctx.fillStyle = "#fff8e8";
+  ctx.fillText("BOX", 560, 256);
+
+  ctx.fillStyle = "#2b1d26";
+  ctx.font = "bold 14px Trebuchet MS";
+  ctx.fillText("INSIDE THE GARAGE", canvas.width / 2, 30);
+}
+
+function drawShadow(x, y, width, height, alpha = 0.22) {
+  ctx.fillStyle = `rgba(43, 29, 38, ${alpha})`;
+  ctx.fillRect(x - width / 2, y - height / 2, width, height);
+}
+
+function drawBlock(x, y, width, height, topColor, frontColor, frontHeight = 8) {
+  ctx.fillStyle = topColor;
+  ctx.fillRect(x, y, width, height - frontHeight);
+  ctx.fillStyle = frontColor;
+  ctx.fillRect(x, y + height - frontHeight, width, frontHeight);
+  ctx.strokeStyle = "#2b1d26";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x, y, width, height);
+}
+
+function getDepthScale(y) {
+  const area = getCurrentScene().play;
+  return clamp(0.94 + (y - area.minY) / (area.maxY - area.minY) * 0.1, 0.94, 1.04);
 }
 
 function drawSkyBits(timestamp) {
@@ -782,34 +1019,36 @@ function drawHouseAndGarage() {
   }
   ctx.fillRect(0, 92, canvas.width, 7);
 
-  ctx.fillStyle = "#d9a06d";
-  ctx.fillRect(462, 116, 230, 96);
-  ctx.fillStyle = "#ffcc7a";
-  ctx.fillRect(490, 52, 178, 142);
+  drawShadow(584, 220, 238, 22, 0.18);
+  drawBlock(490, 52, 178, 142, "#ffcc7a", "#d99b5a", 14);
   ctx.fillStyle = "#c45b52";
   pixelTriangle(470, 56, 688, 56, 580, 0);
-  ctx.fillStyle = "#6f4d3c";
-  ctx.fillRect(516, 122, 60, 72);
-  ctx.fillStyle = "#4f8cff";
-  ctx.fillRect(588, 92, 42, 34);
-  ctx.fillStyle = "#d8f7ff";
-  ctx.fillRect(596, 100, 26, 18);
-  ctx.fillStyle = "#f7e6a0";
-  ctx.fillRect(592, 160, 72, 44);
-  ctx.fillStyle = "#f1d679";
-  ctx.fillRect(600, 170, 56, 7);
-  ctx.fillRect(600, 188, 56, 7);
   ctx.strokeStyle = "#2b1d26";
-  ctx.lineWidth = 5;
-  ctx.strokeRect(490, 52, 178, 142);
-  ctx.strokeRect(516, 122, 60, 72);
-  ctx.strokeRect(588, 92, 42, 34);
-  ctx.strokeRect(592, 160, 72, 44);
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(470, 56);
+  ctx.lineTo(580, 0);
+  ctx.lineTo(688, 56);
+  ctx.stroke();
+
+  drawBlock(516, 122, 60, 72, "#7c5132", "#5a3823", 10);
+  ctx.fillStyle = "#ffd765";
+  ctx.fillRect(566, 156, 5, 5);
+
+  drawBlock(588, 92, 42, 34, "#4f8cff", "#3266c4", 6);
+  ctx.fillStyle = "#d8f7ff";
+  ctx.fillRect(596, 100, 26, 14);
+
+  drawBlock(592, 158, 72, 46, "#f7e6a0", "#d99b5a", 10);
+  ctx.fillStyle = "#d99b5a";
+  ctx.fillRect(600, 168, 56, 4);
+  ctx.fillRect(600, 184, 56, 4);
+
   ctx.fillStyle = "#2b1d26";
-  ctx.font = "bold 12px Trebuchet MS";
+  ctx.font = "bold 13px Trebuchet MS";
   ctx.textAlign = "center";
-  ctx.fillText("HOUSE", 578, 78);
-  ctx.fillText("GARAGE", 628, 184);
+  ctx.fillText("HOUSE", 580, 44);
+  ctx.fillText("GARAGE", 628, 152);
 }
 
 function drawYardDetails(timestamp) {
@@ -818,39 +1057,27 @@ function drawYardDetails(timestamp) {
 }
 
 function drawSaleTable() {
-  ctx.fillStyle = "#f2d49b";
-  ctx.fillRect(206, 236, 398, 104);
-  ctx.fillStyle = "#e1bd82";
-  ctx.fillRect(224, 252, 360, 14);
-
-  ctx.fillStyle = "#a65335";
-  ctx.fillRect(242, 270, 310, 22);
-  ctx.fillStyle = "#f2a65e";
-  ctx.fillRect(224, 246, 346, 34);
+  drawShadow(412, 354, 420, 22, 0.22);
+  drawBlock(206, 236, 398, 110, "#f2a65e", "#a65335", 22);
   ctx.fillStyle = "#fff3d6";
-  ctx.fillRect(238, 255, 318, 8);
-  ctx.strokeStyle = "#2b1d26";
-  ctx.lineWidth = 4;
-  ctx.strokeRect(224, 246, 346, 34);
+  ctx.fillRect(218, 248, 374, 8);
+
   ctx.fillStyle = "#6f3d35";
-  ctx.fillRect(258, 292, 18, 48);
-  ctx.fillRect(532, 292, 18, 48);
+  ctx.fillRect(252, 332, 18, 36);
+  ctx.fillRect(540, 332, 18, 36);
 
   drawDisplaySlots();
 
-  ctx.fillStyle = "#7bdff2";
-  ctx.fillRect(574, 284, 24, 28);
+  drawShadow(580, 332, 28, 8, 0.18);
+  drawBlock(566, 296, 28, 32, "#7bdff2", "#3aa8c9", 8);
   ctx.fillStyle = "#fff8e8";
-  ctx.fillRect(580, 290, 12, 16);
-  ctx.strokeStyle = "#2b1d26";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(574, 284, 24, 28);
+  ctx.fillRect(572, 302, 16, 14);
 
   if (!items.some((item) => item.ready)) {
     ctx.fillStyle = "#2b1d26";
     ctx.font = "bold 18px Trebuchet MS";
     ctx.textAlign = "center";
-    ctx.fillText("Find treasures first!", 404, 318);
+    ctx.fillText("Find treasures first!", 404, 290);
   }
 }
 
@@ -858,12 +1085,15 @@ function drawDisplaySlots() {
   itemTemplates.forEach((item) => {
     const isHighView = item.viewBonus > 1.2;
     const isLowView = item.viewBonus < 1;
+    const slotColor = isHighView ? "#ffd765" : isLowView ? "#d8f7ff" : "#fff8e8";
+    const sideColor = isHighView ? "#d99b5a" : isLowView ? "#88bdd0" : "#d9b36c";
 
-    ctx.fillStyle = isHighView ? "#ffd765" : isLowView ? "#d8f7ff" : "#fff8e8";
-    ctx.fillRect(item.x - 24, item.y - 24, 48, 48);
-    ctx.strokeStyle = isHighView ? "#ff8cc6" : "#2b1d26";
-    ctx.lineWidth = isHighView ? 4 : 2;
-    ctx.strokeRect(item.x - 24, item.y - 24, 48, 48);
+    drawBlock(item.x - 24, item.y - 24, 48, 48, slotColor, sideColor, 6);
+    if (isHighView) {
+      ctx.strokeStyle = "#ff8cc6";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(item.x - 24, item.y - 24, 48, 48);
+    }
     ctx.fillStyle = "#2b1d26";
     ctx.font = "bold 9px Trebuchet MS";
     ctx.textAlign = "center";
@@ -878,41 +1108,48 @@ function drawClutterSpots(timestamp) {
 
   const spot = getActiveClutterSpot();
 
-  if (!spot) {
+  if (!spot || spot.scene !== currentScene) {
     return;
   }
 
   const item = getClutterTemplateItem(spot);
-  const pulse = Math.sin(timestamp / 150) * 4;
+  const pulse = Math.sin(timestamp / 150) * 3;
   const isNearby = distance(cassidy.x, cassidy.y, spot.x, spot.y) < 58;
-  const boxSize = isNearby ? 64 : 56;
+  const boxSize = isNearby ? 60 : 54;
 
-  ctx.fillStyle = isNearby ? "#fff3a3" : "#f7e6a0";
-  ctx.fillRect(spot.x - boxSize / 2, spot.y - boxSize / 2, boxSize, boxSize);
-  ctx.strokeStyle = isNearby ? "#ff8cc6" : "#ffd765";
-  ctx.lineWidth = isNearby ? 6 : 5;
-  ctx.strokeRect(spot.x - boxSize / 2, spot.y - boxSize / 2, boxSize, boxSize);
+  drawShadow(spot.x, spot.y + boxSize / 2 + 8, boxSize * 0.82, 12, 0.2);
+  drawBlock(
+    spot.x - boxSize / 2,
+    spot.y - boxSize / 2,
+    boxSize,
+    boxSize,
+    isNearby ? "#fff3a3" : "#f7e6a0",
+    isNearby ? "#d99b5a" : "#c98555",
+    10
+  );
+  if (isNearby) {
+    ctx.strokeStyle = "#ff8cc6";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(spot.x - boxSize / 2, spot.y - boxSize / 2, boxSize, boxSize);
+  }
 
-  ctx.fillStyle = "#6f3d35";
-  ctx.fillRect(spot.x - 20, spot.y - 13, 40, 28);
   ctx.fillStyle = "#fff8e8";
   ctx.font = "26px Arial";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(item.icon, spot.x, spot.y + 1);
+  ctx.fillText(item.icon, spot.x, spot.y - 2);
 
-  drawSparkle(spot.x - 36, spot.y - 36 + pulse);
-  drawSparkle(spot.x + 38, spot.y - 34 - pulse);
-  drawSparkle(spot.x, spot.y - 47 + pulse);
+  drawSparkle(spot.x - 32, spot.y - 32 + pulse);
+  drawSparkle(spot.x + 32, spot.y - 28 - pulse);
 
   ctx.fillStyle = "#fff8e8";
-  ctx.fillRect(spot.x - 74, spot.y + 42, 148, 28);
+  ctx.fillRect(spot.x - 76, spot.y + 38, 152, 24);
   ctx.strokeStyle = "#2b1d26";
   ctx.lineWidth = 3;
-  ctx.strokeRect(spot.x - 74, spot.y + 42, 148, 28);
+  ctx.strokeRect(spot.x - 76, spot.y + 38, 152, 24);
   ctx.fillStyle = "#2b1d26";
   ctx.font = "bold 12px Trebuchet MS";
-  ctx.fillText(isNearby ? "Press Space!" : `Find: ${item.name}`, spot.x, spot.y + 60);
+  ctx.fillText(isNearby ? "Press Space!" : `Find: ${item.name}`, spot.x, spot.y + 54);
 }
 
 function drawTargetArrow() {
@@ -921,14 +1158,36 @@ function drawTargetArrow() {
   }
 
   const spot = getActiveClutterSpot();
-
-  if (!spot || distance(cassidy.x, cassidy.y, spot.x, spot.y) < 58) {
+  if (!spot) {
     return;
   }
 
-  const angle = Math.atan2(spot.y - cassidy.y, spot.x - cassidy.x);
-  const arrowX = cassidy.x + Math.cos(angle) * 48;
-  const arrowY = cassidy.y + Math.sin(angle) * 48 - 34;
+  let targetX;
+  let targetY;
+
+  if (spot.scene === currentScene) {
+    if (distance(cassidy.x, cassidy.y, spot.x, spot.y) < 58) {
+      return;
+    }
+    targetX = spot.x;
+    targetY = spot.y;
+  } else {
+    const door = getCurrentScene().doors.find((candidate) => {
+      if (currentScene === "yard") {
+        return candidate.target === spot.scene;
+      }
+      return candidate.target === "yard";
+    });
+    if (!door) {
+      return;
+    }
+    targetX = door.x + door.w / 2;
+    targetY = door.y + door.h / 2;
+  }
+
+  const angle = Math.atan2(targetY - cassidy.y, targetX - cassidy.x);
+  const arrowX = cassidy.x + Math.cos(angle) * 52;
+  const arrowY = cassidy.y + Math.sin(angle) * 52 - 36;
 
   ctx.save();
   ctx.translate(arrowX, arrowY);
@@ -937,10 +1196,10 @@ function drawTargetArrow() {
   ctx.strokeStyle = "#2b1d26";
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(18, 0);
-  ctx.lineTo(-10, -14);
-  ctx.lineTo(-5, 0);
-  ctx.lineTo(-10, 14);
+  ctx.moveTo(22, 0);
+  ctx.lineTo(-12, -16);
+  ctx.lineTo(-6, 0);
+  ctx.lineTo(-12, 16);
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
@@ -957,11 +1216,8 @@ function drawItems() {
       return;
     }
 
-    ctx.fillStyle = "#fff8e8";
-    ctx.fillRect(item.x - 28, item.y - 26, 56, 52);
-    ctx.strokeStyle = "#2b1d26";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(item.x - 28, item.y - 26, 56, 52);
+    drawShadow(item.x, item.y + 28, 44, 10, 0.16);
+    drawBlock(item.x - 26, item.y - 24, 52, 50, "#fff8e8", "#d9b36c", 8);
     ctx.fillText(item.icon, item.x, item.y - 4);
     ctx.fillStyle = "#2b1d26";
     ctx.font = "bold 13px Trebuchet MS";
@@ -976,19 +1232,23 @@ function drawCassidy(timestamp) {
   const x = cassidy.x;
   const y = cassidy.y - bob;
 
-  drawPixelPerson(x, y, "#ff8cc6", "#5b332d", "#ffd1a8", walkPhase, true, cassidy.direction);
+  ctx.save();
+  ctx.translate(x, cassidy.y);
+  ctx.scale(getDepthScale(cassidy.y), getDepthScale(cassidy.y));
+  drawPixelPerson(0, -bob, "#ff8cc6", "#7a4a2a", "#ffd1a8", walkPhase, true, cassidy.direction);
 
   if (cassidy.cheerUntil > timestamp) {
     ctx.fillStyle = "#fff8e8";
-    ctx.fillRect(x - 38, y - 82, 76, 24);
+    ctx.fillRect(-38, -bob - 82, 76, 24);
     ctx.strokeStyle = "#2b1d26";
     ctx.lineWidth = 2;
-    ctx.strokeRect(x - 38, y - 82, 76, 24);
+    ctx.strokeRect(-38, -bob - 82, 76, 24);
     ctx.fillStyle = "#2b1d26";
     ctx.font = "bold 12px Trebuchet MS";
     ctx.textAlign = "center";
-    ctx.fillText("Got it!", x, y - 66);
+    ctx.fillText("Got it!", 0, -bob - 66);
   }
+  ctx.restore();
 }
 
 function drawCustomer(customer, timestamp) {
@@ -997,19 +1257,23 @@ function drawCustomer(customer, timestamp) {
     : Math.sin(timestamp / 95 + customer.stepOffset);
   const bob = customer.state === "thinking" ? 0 : Math.abs(walkPhase) * 2;
 
-  drawPixelPerson(customer.x, customer.y - bob, customer.color, customer.hairColor, "#ffd6b6", walkPhase, false, "right");
+  ctx.save();
+  ctx.translate(customer.x, customer.y);
+  ctx.scale(getDepthScale(customer.y), getDepthScale(customer.y));
+  drawPixelPerson(0, -bob, customer.color, customer.hairColor, "#ffd6b6", walkPhase, false, "right");
 
   if (customer.message) {
     ctx.fillStyle = "#fff8e8";
-    ctx.fillRect(customer.x - 34, customer.y - 58, 68, 22);
+    ctx.fillRect(-34, -58, 68, 22);
     ctx.strokeStyle = "#2b1d26";
     ctx.lineWidth = 2;
-    ctx.strokeRect(customer.x - 34, customer.y - 58, 68, 22);
+    ctx.strokeRect(-34, -58, 68, 22);
     ctx.fillStyle = "#2b1d26";
     ctx.font = "bold 11px Trebuchet MS";
     ctx.textAlign = "center";
-    ctx.fillText(customer.message, customer.x, customer.y - 44);
+    ctx.fillText(customer.message, 0, -44);
   }
+  ctx.restore();
 }
 
 function drawPixelPerson(x, y, shirtColor, hairColor, skinColor, walkPhase = 0, isCassidy = false, direction = "down") {
@@ -1018,8 +1282,11 @@ function drawPixelPerson(x, y, shirtColor, hairColor, skinColor, walkPhase = 0, 
   const headBounce = Math.round(Math.abs(walkPhase) * 4);
   const headY = y - 40 - headBounce;
 
+  drawShadow(x + 2, y + 42, 38, 9, 0.24);
   ctx.fillStyle = "#2b1d26";
   ctx.fillRect(x - 18, y + 38, 36, 5);
+  ctx.fillStyle = "rgba(43, 29, 38, 0.14)";
+  ctx.fillRect(x - 10, headY + 30, 24, 8);
   ctx.fillStyle = hairColor;
   ctx.fillRect(x - 17, headY - 6, 34, 12);
   if (isCassidy) {
