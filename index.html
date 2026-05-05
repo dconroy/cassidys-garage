@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cassidy's Garage Sale Quest</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="game-shell">
+    <header class="top-bar">
+      <div>
+        <p class="eyebrow">Cassidy presents</p>
+        <h1>Cassidy's Garage Sale Quest</h1>
+      </div>
+      <div class="scoreboard" aria-label="Current score">
+        <div class="score-tile">
+          <span>Time</span>
+          <strong id="timer">60</strong>
+        </div>
+        <div class="score-tile">
+          <span>Money</span>
+          <strong id="money">$0</strong>
+        </div>
+        <div class="score-tile">
+          <span>Sold</span>
+          <strong id="itemsSold">0</strong>
+        </div>
+      </div>
+    </header>
+
+    <section class="game-grid">
+      <section class="scene-panel" aria-label="Animated garage sale yard">
+        <canvas id="gameCanvas" width="640" height="430"></canvas>
+        <div class="scene-caption">
+          <span id="statusText">Set your prices, then start the sale!</span>
+        </div>
+      </section>
+
+      <aside class="control-panel" aria-label="Pricing controls">
+        <div class="panel-heading">
+          <h2>Price Tags</h2>
+          <button id="startButton" class="pixel-button primary">Start Garage Sale</button>
+          <button id="restartButton" class="pixel-button hidden">Restart</button>
+        </div>
+
+        <div id="itemsPanel" class="items-panel"></div>
+
+        <div class="customer-stats">
+          <div>
+            <span>Happy Customers</span>
+            <strong id="happyCustomers">0</strong>
+          </div>
+          <div>
+            <span>Walkaways</span>
+            <strong id="walkaways">0</strong>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="log-panel" aria-label="Garage sale event log">
+      <h2>Sale Chatter</h2>
+      <ul id="eventLog"></ul>
+    </section>
+
+    <section id="summaryScreen" class="summary-screen hidden" aria-live="polite">
+      <div class="summary-card">
+        <p class="eyebrow">Day complete!</p>
+        <h2 id="ratingTitle">Garage Sale Legend</h2>
+        <div class="summary-stats">
+          <p>Total earned: <strong id="finalMoney">$0</strong></p>
+          <p>Items sold: <strong id="finalSold">0</strong></p>
+          <p>Happy customers: <strong id="finalHappy">0</strong></p>
+          <p>Walkaways: <strong id="finalWalkaways">0</strong></p>
+        </div>
+        <p id="strategyHint" class="strategy-hint">Try a balanced price strategy next time.</p>
+        <button id="summaryRestartButton" class="pixel-button primary">Play Again</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>
