@@ -113,6 +113,14 @@ h2 {
   text-transform: uppercase;
 }
 
+.item-meta .not-ready {
+  color: #a14b2f;
+}
+
+.item-meta .ready {
+  color: #1c7c3b;
+}
+
 .score-tile strong {
   display: block;
   margin-top: 2px;
@@ -129,6 +137,7 @@ h2 {
 }
 
 .scene-panel {
+  position: relative;
   overflow: hidden;
   background: var(--sky);
 }
@@ -146,6 +155,94 @@ h2 {
   color: #fff;
   background: var(--ink);
   font-weight: 900;
+}
+
+.goal-card {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  background: #fff8e8;
+  border-top: 4px solid var(--ink);
+  border-bottom: 4px solid var(--ink);
+}
+
+.goal-card span {
+  color: #1c7c3b;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.goal-card strong {
+  font-size: 1.05rem;
+}
+
+.goal-card p {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.move-help {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  background: #d8f7ff;
+  border-top: 4px solid var(--ink);
+}
+
+.move-help p {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.d-pad {
+  display: grid;
+  grid-template-areas:
+    ". up ."
+    "left down right";
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.move-button {
+  display: grid;
+  width: 36px;
+  height: 32px;
+  place-items: center;
+  color: #fff;
+  background: #24b47e;
+  border: 3px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--shadow);
+  cursor: pointer;
+  font-weight: 900;
+  line-height: 1;
+  touch-action: none;
+}
+
+.move-button:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--shadow);
+}
+
+.move-button.up {
+  grid-area: up;
+}
+
+.move-button.left {
+  grid-area: left;
+}
+
+.move-button.down {
+  grid-area: down;
+}
+
+.move-button.right {
+  grid-area: right;
 }
 
 .control-panel {
@@ -186,6 +283,11 @@ h2 {
 .pixel-button.primary {
   color: #fff;
   background: var(--blue);
+}
+
+.pixel-button.action {
+  color: #fff;
+  background: #24b47e;
 }
 
 .hidden {
@@ -390,5 +492,14 @@ h2 {
   .price-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .move-help {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .d-pad {
+    align-self: center;
   }
 }

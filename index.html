@@ -32,14 +32,29 @@
     <section class="game-grid">
       <section class="scene-panel" aria-label="Animated garage sale yard">
         <canvas id="gameCanvas" width="640" height="430"></canvas>
+        <div class="goal-card" aria-live="polite">
+          <span>Next Goal</span>
+          <strong id="goalTitle">Find the first treasure</strong>
+          <p id="goalDetails">Walk Cassidy to the glowing clutter box.</p>
+        </div>
         <div class="scene-caption">
           <span id="statusText">Set your prices, then start the sale!</span>
+        </div>
+        <div class="move-help" aria-label="Movement controls">
+          <p>Move Cassidy with arrow keys, WASD, or the buttons.</p>
+          <div class="d-pad">
+            <button class="move-button up" data-move="up" aria-label="Move Cassidy up">▲</button>
+            <button class="move-button left" data-move="left" aria-label="Move Cassidy left">◀</button>
+            <button class="move-button down" data-move="down" aria-label="Move Cassidy down">▼</button>
+            <button class="move-button right" data-move="right" aria-label="Move Cassidy right">▶</button>
+          </div>
         </div>
       </section>
 
       <aside class="control-panel" aria-label="Pricing controls">
         <div class="panel-heading">
-          <h2>Price Tags</h2>
+          <h2>Quest & Prices</h2>
+          <button id="actionButton" class="pixel-button action">Find / Tag Clutter</button>
           <button id="startButton" class="pixel-button primary">Start Garage Sale</button>
           <button id="restartButton" class="pixel-button hidden">Restart</button>
         </div>
