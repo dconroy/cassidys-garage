@@ -35,7 +35,7 @@ input {
 
 .game-shell {
   position: relative;
-  width: min(1120px, calc(100% - 24px));
+  width: min(1320px, calc(100% - 24px));
   margin: 12px auto;
   padding: 14px;
   background: var(--cream);
@@ -129,7 +129,7 @@ h2 {
 
 .game-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(315px, 350px);
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 390px);
   gap: 12px;
   margin-top: 12px;
   padding: 12px;
@@ -328,6 +328,18 @@ h2 {
   gap: 8px;
 }
 
+.slot-row {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 2px dashed #d9b36c;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
 .price-controls {
   display: flex;
   align-items: center;
@@ -343,6 +355,28 @@ h2 {
   box-shadow: 2px 2px 0 var(--shadow);
   cursor: pointer;
   font-weight: 900;
+}
+
+.slot-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.slot-button {
+  min-height: 30px;
+  padding: 4px 7px;
+  color: var(--ink);
+  background: #d8f7ff;
+  border: 3px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--shadow);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.slot-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .current-price {
@@ -490,6 +524,11 @@ h2 {
   }
 
   .price-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .slot-row {
     align-items: flex-start;
     flex-direction: column;
   }

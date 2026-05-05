@@ -4,18 +4,18 @@ const CUSTOMER_MAX_DELAY = 4000;
 const CASSIDY_SPEED = 125;
 const PLAY_AREA = {
   minX: 36,
-  maxX: 604,
+  maxX: 724,
   minY: 126,
-  maxY: 334
+  maxY: 404
 };
 
 // Edit this list to change the sale items, starting stock, fair prices, and canvas positions.
 const itemTemplates = [
-  { id: "guitar", name: "Guitar", icon: "🎸", quantity: 3, suggestedPrice: 25, x: 236, y: 270, slotLabel: "Front Spot", viewBonus: 1.35 },
-  { id: "computer", name: "Computer", icon: "💻", quantity: 2, suggestedPrice: 75, x: 292, y: 270, slotLabel: "Front Spot", viewBonus: 1.35 },
-  { id: "clothes", name: "Old Clothes", icon: "👕", quantity: 8, suggestedPrice: 8, x: 348, y: 270, slotLabel: "Middle Spot", viewBonus: 1.1 },
-  { id: "toys", name: "Toys", icon: "🧸", quantity: 6, suggestedPrice: 12, x: 404, y: 270, slotLabel: "Middle Spot", viewBonus: 1.1 },
-  { id: "books", name: "Books", icon: "📚", quantity: 10, suggestedPrice: 5, x: 460, y: 270, slotLabel: "Side Spot", viewBonus: 0.85 }
+  { id: "guitar", name: "Guitar", icon: "🎸", quantity: 3, suggestedPrice: 25, x: 258, y: 288, slotLabel: "Front Spot", viewBonus: 1.35 },
+  { id: "computer", name: "Computer", icon: "💻", quantity: 2, suggestedPrice: 75, x: 326, y: 288, slotLabel: "Front Spot", viewBonus: 1.35 },
+  { id: "clothes", name: "Old Clothes", icon: "👕", quantity: 8, suggestedPrice: 8, x: 394, y: 288, slotLabel: "Middle Spot", viewBonus: 1.1 },
+  { id: "toys", name: "Toys", icon: "🧸", quantity: 6, suggestedPrice: 12, x: 462, y: 288, slotLabel: "Middle Spot", viewBonus: 1.1 },
+  { id: "books", name: "Books", icon: "📚", quantity: 10, suggestedPrice: 5, x: 530, y: 288, slotLabel: "Side Spot", viewBonus: 0.85 }
 ];
 
 const clutterSpotTemplates = [
@@ -168,7 +168,7 @@ function renderItemsPanel() {
       <div class="item-icon" aria-hidden="true">${item.icon}</div>
       <div>
         <div class="item-name">${item.name}</div>
-        <span class="item-meta">Fair: $${item.suggestedPrice} | Views: ${getViewLabel(item)} | Left: <span id="${item.id}-inventory">${item.inventory}</span> | Sold: <span id="${item.id}-sold">${item.sold}</span> | <span id="${item.id}-status" class="${statusClass}">${statusText}</span></span>
+        <span class="item-meta">Fair: $${item.suggestedPrice} | Views: <span id="${item.id}-views">${getViewLabel(item)}</span> | Left: <span id="${item.id}-inventory">${item.inventory}</span> | Sold: <span id="${item.id}-sold">${item.sold}</span> | <span id="${item.id}-status" class="${statusClass}">${statusText}</span></span>
       </div>
       <div class="price-row">
         <span>Price tag</span>
@@ -178,6 +178,13 @@ function renderItemsPanel() {
           <button class="price-button" data-action="increase" data-id="${item.id}" aria-label="Raise ${item.name} price">+</button>
         </div>
       </div>
+      <div class="slot-row">
+        <span>Table spot: <strong id="${item.id}-slot">${item.slotLabel}</strong></span>
+        <div class="slot-controls">
+          <button class="slot-button" data-direction="left" data-id="${item.id}" aria-label="Move ${item.name} toward higher traffic">◀ Better spot</button>
+          <button class="slot-button" data-direction="right" data-id="${item.id}" aria-label="Move ${item.name} toward lower traffic">Worse spot ▶</button>
+        </div>
+      </div>
     `;
     elements.itemsPanel.appendChild(card);
   });
@@ -185,8 +192,12 @@ function renderItemsPanel() {
   elements.itemsPanel.querySelectorAll(".price-button").forEach((button) => {
     button.addEventListener("click", handlePriceClick);
   });
+  elements.itemsPanel.querySelectorAll(".slot-button").forEach((button) => {
+    button.addEventListener("click", handleSlotClick);
+  });
 
   setPriceButtonsEnabled(gameState === "setup");
+  updateSlotButtons();
 }
 
 function handlePriceClick(event) {
@@ -202,10 +213,68 @@ function handlePriceClick(event) {
   document.getElementById(`${item.id}-price`).textContent = formatMoney(item.price);
 }
 
+function handleSlotClick(event) {
+  const button = event.currentTarget;
+  const item = items.find((candidate) => candidate.id === button.dataset.id);
+
+  if (!item || !item.ready || gameState !== "setup") {
+    return;
+  }
+
+  moveItemSlot(item, button.dataset.direction);
+}
+
+function moveItemSlot(item, direction) {
+  const orderedItems = [...items].sort((a, b) => a.x - b.x);
+  const currentIndex = orderedItems.findIndex((candidate) => candidate.id === item.id);
+  const neighborIndex = direction === "left" ? currentIndex - 1 : currentIndex + 1;
+  const neighbor = orderedItems[neighborIndex];
+
+  if (!neighbor) {
+    return;
+  }
+
+  swapTableSlots(item, neighbor);
+  renderItemsPanel();
+  updatePrepControls();
+  addLog(`${item.name} moved to a ${getViewLabel(item).toLowerCase()}-view table spot.`);
+}
+
+function swapTableSlots(firstItem, secondItem) {
+  const firstSlot = {
+    x: firstItem.x,
+    y: firstItem.y,
+    slotLabel: firstItem.slotLabel,
+    viewBonus: firstItem.viewBonus
+  };
+
+  firstItem.x = secondItem.x;
+  firstItem.y = secondItem.y;
+  firstItem.slotLabel = secondItem.slotLabel;
+  firstItem.viewBonus = secondItem.viewBonus;
+  secondItem.x = firstSlot.x;
+  secondItem.y = firstSlot.y;
+  secondItem.slotLabel = firstSlot.slotLabel;
+  secondItem.viewBonus = firstSlot.viewBonus;
+}
+
 function setPriceButtonsEnabled(enabled) {
   elements.itemsPanel.querySelectorAll(".price-button").forEach((button) => {
     const item = items.find((candidate) => candidate.id === button.dataset.id);
     button.disabled = !enabled || !item.ready;
+  });
+}
+
+function updateSlotButtons() {
+  const orderedItems = [...items].sort((a, b) => a.x - b.x);
+
+  elements.itemsPanel.querySelectorAll(".slot-button").forEach((button) => {
+    const item = items.find((candidate) => candidate.id === button.dataset.id);
+    const itemIndex = orderedItems.findIndex((candidate) => candidate.id === item.id);
+    const isLeftEdge = button.dataset.direction === "left" && itemIndex === 0;
+    const isRightEdge = button.dataset.direction === "right" && itemIndex === orderedItems.length - 1;
+
+    button.disabled = gameState !== "setup" || !item.ready || isLeftEdge || isRightEdge;
   });
 }
 
@@ -246,8 +315,8 @@ function updatePrepControls() {
   if (allItemsReady()) {
     elements.actionButton.textContent = "All Treasures Tagged";
     elements.goalTitle.textContent = "Open the garage sale";
-    elements.goalDetails.textContent = "Adjust prices on the right, then press Start Garage Sale.";
-    elements.statusText.textContent = "Everything is tagged and downstairs. Set prices, then start the sale!";
+    elements.goalDetails.textContent = "Use Better/Worse spot buttons to arrange treasures, set prices, then start.";
+    elements.statusText.textContent = "Everything is tagged. Put valuable treasures in High-view spots before opening!";
   } else if (nearbySpot) {
     elements.actionButton.textContent = `Tag ${getClutterTemplateItem(nearbySpot).name}`;
     elements.goalTitle.textContent = `Tag the ${nearbySpot.label}`;
@@ -303,6 +372,7 @@ function handlePrepAction() {
   cassidy.cheerUntil = performance.now() + 1100;
   updateItemStats(item);
   setPriceButtonsEnabled(true);
+  updateSlotButtons();
   addLog(`Cassidy found the ${spot.label}, added cute price tags, and carried it downstairs.`);
   updatePrepControls();
 
@@ -415,8 +485,8 @@ function cheerNearbyCustomer(timestamp) {
 
 function spawnCustomer() {
   const shirtColors = ["#ff6b6b", "#4f8cff", "#b56cff", "#24b47e", "#ff9f43"];
-  const y = randomBetween(94, 350);
-  const target = { x: randomBetween(278, 380), y: randomBetween(182, 246) };
+  const y = randomBetween(128, 420);
+  const target = { x: randomBetween(310, 486), y: randomBetween(248, 312) };
 
   customers.push({
     x: -24,
@@ -424,7 +494,7 @@ function spawnCustomer() {
     targetX: target.x,
     targetY: target.y,
     exitX: canvas.width + 30,
-    exitY: randomBetween(80, 350),
+    exitY: randomBetween(128, 420),
     speed: randomBetween(54, 76),
     state: "arriving",
     pauseTime: 0,
@@ -601,6 +671,17 @@ function updateItemStats(item) {
     status.textContent = item.ready ? "Tagged" : "Find clutter";
     status.className = item.ready ? "ready" : "not-ready";
   }
+
+  const views = document.getElementById(`${item.id}-views`);
+  const slot = document.getElementById(`${item.id}-slot`);
+
+  if (views) {
+    views.textContent = getViewLabel(item);
+  }
+
+  if (slot) {
+    slot.textContent = item.slotLabel;
+  }
 }
 
 function updateStats(secondsLeft) {
@@ -684,51 +765,51 @@ function drawGrass() {
   }
 
   ctx.fillStyle = "#d8be79";
-  ctx.fillRect(0, 344, canvas.width, 54);
+  ctx.fillRect(0, 414, canvas.width, 54);
   ctx.fillStyle = "#bf9d5a";
-  ctx.fillRect(0, 366, canvas.width, 6);
+  ctx.fillRect(0, 436, canvas.width, 6);
 
   ctx.fillStyle = "#c8aa66";
   for (let x = 10; x < canvas.width; x += 44) {
-    ctx.fillRect(x, 356, 18, 4);
+    ctx.fillRect(x, 426, 18, 4);
   }
 }
 
 function drawHouseAndGarage() {
   ctx.fillStyle = "#8b613d";
-  for (let x = 0; x < canvas.width; x += 54) {
+  for (let x = 0; x < canvas.width; x += 56) {
     ctx.fillRect(x, 78, 24, 46);
   }
   ctx.fillRect(0, 92, canvas.width, 7);
 
   ctx.fillStyle = "#d9a06d";
-  ctx.fillRect(382, 104, 230, 86);
+  ctx.fillRect(462, 116, 230, 96);
   ctx.fillStyle = "#ffcc7a";
-  ctx.fillRect(410, 52, 178, 122);
+  ctx.fillRect(490, 52, 178, 142);
   ctx.fillStyle = "#c45b52";
-  pixelTriangle(390, 56, 608, 56, 500, 0);
+  pixelTriangle(470, 56, 688, 56, 580, 0);
   ctx.fillStyle = "#6f4d3c";
-  ctx.fillRect(436, 108, 60, 66);
+  ctx.fillRect(516, 122, 60, 72);
   ctx.fillStyle = "#4f8cff";
-  ctx.fillRect(508, 92, 42, 34);
+  ctx.fillRect(588, 92, 42, 34);
   ctx.fillStyle = "#d8f7ff";
-  ctx.fillRect(516, 100, 26, 18);
+  ctx.fillRect(596, 100, 26, 18);
   ctx.fillStyle = "#f7e6a0";
-  ctx.fillRect(512, 146, 72, 44);
+  ctx.fillRect(592, 160, 72, 44);
   ctx.fillStyle = "#f1d679";
-  ctx.fillRect(520, 156, 56, 7);
-  ctx.fillRect(520, 174, 56, 7);
+  ctx.fillRect(600, 170, 56, 7);
+  ctx.fillRect(600, 188, 56, 7);
   ctx.strokeStyle = "#2b1d26";
   ctx.lineWidth = 5;
-  ctx.strokeRect(410, 52, 178, 122);
-  ctx.strokeRect(436, 108, 60, 66);
-  ctx.strokeRect(508, 92, 42, 34);
-  ctx.strokeRect(512, 146, 72, 44);
+  ctx.strokeRect(490, 52, 178, 142);
+  ctx.strokeRect(516, 122, 60, 72);
+  ctx.strokeRect(588, 92, 42, 34);
+  ctx.strokeRect(592, 160, 72, 44);
   ctx.fillStyle = "#2b1d26";
   ctx.font = "bold 12px Trebuchet MS";
   ctx.textAlign = "center";
-  ctx.fillText("HOUSE", 498, 76);
-  ctx.fillText("GARAGE", 548, 170);
+  ctx.fillText("HOUSE", 578, 78);
+  ctx.fillText("GARAGE", 628, 184);
 }
 
 function drawYardDetails(timestamp) {
@@ -738,38 +819,38 @@ function drawYardDetails(timestamp) {
 
 function drawSaleTable() {
   ctx.fillStyle = "#f2d49b";
-  ctx.fillRect(188, 218, 330, 92);
+  ctx.fillRect(206, 236, 398, 104);
   ctx.fillStyle = "#e1bd82";
-  ctx.fillRect(204, 232, 298, 14);
+  ctx.fillRect(224, 252, 360, 14);
 
   ctx.fillStyle = "#a65335";
-  ctx.fillRect(226, 252, 250, 22);
+  ctx.fillRect(242, 270, 310, 22);
   ctx.fillStyle = "#f2a65e";
-  ctx.fillRect(208, 226, 286, 32);
+  ctx.fillRect(224, 246, 346, 34);
   ctx.fillStyle = "#fff3d6";
-  ctx.fillRect(220, 234, 262, 8);
+  ctx.fillRect(238, 255, 318, 8);
   ctx.strokeStyle = "#2b1d26";
   ctx.lineWidth = 4;
-  ctx.strokeRect(208, 226, 286, 32);
+  ctx.strokeRect(224, 246, 346, 34);
   ctx.fillStyle = "#6f3d35";
-  ctx.fillRect(238, 274, 18, 36);
-  ctx.fillRect(452, 274, 18, 36);
+  ctx.fillRect(258, 292, 18, 48);
+  ctx.fillRect(532, 292, 18, 48);
 
   drawDisplaySlots();
 
   ctx.fillStyle = "#7bdff2";
-  ctx.fillRect(486, 264, 24, 28);
+  ctx.fillRect(574, 284, 24, 28);
   ctx.fillStyle = "#fff8e8";
-  ctx.fillRect(492, 270, 12, 16);
+  ctx.fillRect(580, 290, 12, 16);
   ctx.strokeStyle = "#2b1d26";
   ctx.lineWidth = 3;
-  ctx.strokeRect(486, 264, 24, 28);
+  ctx.strokeRect(574, 284, 24, 28);
 
   if (!items.some((item) => item.ready)) {
     ctx.fillStyle = "#2b1d26";
     ctx.font = "bold 18px Trebuchet MS";
     ctx.textAlign = "center";
-    ctx.fillText("Find treasures first!", 352, 294);
+    ctx.fillText("Find treasures first!", 404, 318);
   }
 }
 
@@ -934,49 +1015,53 @@ function drawCustomer(customer, timestamp) {
 function drawPixelPerson(x, y, shirtColor, hairColor, skinColor, walkPhase = 0, isCassidy = false, direction = "down") {
   const armSwing = Math.round(walkPhase * 4);
   const legSwing = Math.round(walkPhase * 5);
+  const headBounce = Math.round(Math.abs(walkPhase) * 4);
+  const headY = y - 40 - headBounce;
 
   ctx.fillStyle = "#2b1d26";
-  ctx.fillRect(x - 16, y + 43, 32, 5);
+  ctx.fillRect(x - 18, y + 38, 36, 5);
   ctx.fillStyle = hairColor;
-  ctx.fillRect(x - 12, y - 34, 24, 12);
+  ctx.fillRect(x - 17, headY - 6, 34, 12);
   if (isCassidy) {
-    ctx.fillRect(x + 10, y - 28, 10, 18);
+    ctx.fillRect(x + 14, headY + 2, 10, 18);
   }
   ctx.fillStyle = skinColor;
-  ctx.fillRect(x - 10, y - 26, 20, 18);
+  ctx.fillRect(x - 18, headY, 36, 30);
+  ctx.fillStyle = "#ffd1a8";
+  ctx.fillRect(x - 18, headY + 17, 36, 13);
   ctx.fillStyle = shirtColor;
-  ctx.fillRect(x - 14, y - 8, 28, 28);
+  ctx.fillRect(x - 15, y - 9, 30, 26);
   ctx.fillStyle = isCassidy ? "#6ee7f2" : "#fff8e8";
-  ctx.fillRect(x - 8, y - 2, 16, 8);
+  ctx.fillRect(x - 9, y - 3, 18, 8);
   if (isCassidy) {
     ctx.fillStyle = "#fff8e8";
-    ctx.fillRect(x - 8, y + 2, 16, 18);
+    ctx.fillRect(x - 8, y + 2, 16, 16);
     ctx.fillStyle = "#ffcc7a";
     ctx.fillRect(x - 5, y + 8, 10, 4);
   }
   ctx.fillStyle = "#2b1d26";
   if (direction === "up") {
-    ctx.fillRect(x - 8, y - 28, 16, 4);
+    ctx.fillRect(x - 10, headY + 5, 20, 4);
   } else if (direction === "left") {
-    ctx.fillRect(x - 9, y - 23, 4, 4);
-    ctx.fillRect(x - 8, y - 16, 8, 3);
+    ctx.fillRect(x - 10, headY + 11, 4, 4);
+    ctx.fillRect(x - 9, headY + 22, 10, 3);
   } else if (direction === "right") {
-    ctx.fillRect(x + 5, y - 23, 4, 4);
-    ctx.fillRect(x, y - 16, 8, 3);
+    ctx.fillRect(x + 6, headY + 11, 4, 4);
+    ctx.fillRect(x - 1, headY + 22, 10, 3);
   } else {
-    ctx.fillRect(x - 8, y - 23, 4, 4);
-    ctx.fillRect(x + 4, y - 23, 4, 4);
-    ctx.fillRect(x - 4, y - 16, 8, 3);
+    ctx.fillRect(x - 10, headY + 11, 5, 5);
+    ctx.fillRect(x + 5, headY + 11, 5, 5);
+    ctx.fillRect(x - 8, headY + 22, 16, 3);
   }
   ctx.fillStyle = skinColor;
-  ctx.fillRect(x - 20, y - 4 + armSwing, 8, 22);
-  ctx.fillRect(x + 12, y - 4 - armSwing, 8, 22);
+  ctx.fillRect(x - 23, y - 7 + armSwing, 8, 22);
+  ctx.fillRect(x + 15, y - 7 - armSwing, 8, 22);
   ctx.fillStyle = "#354b8c";
-  ctx.fillRect(x - 13, y + 20, 10, 20 + legSwing);
-  ctx.fillRect(x + 3, y + 20, 10, 20 - legSwing);
+  ctx.fillRect(x - 13, y + 17, 10, 20 + legSwing);
+  ctx.fillRect(x + 3, y + 17, 10, 20 - legSwing);
   ctx.fillStyle = "#2b1d26";
-  ctx.fillRect(x - 15, y + 40 + legSwing, 14, 5);
-  ctx.fillRect(x + 1, y + 40 - legSwing, 14, 5);
+  ctx.fillRect(x - 15, y + 37 + legSwing, 14, 5);
+  ctx.fillRect(x + 1, y + 37 - legSwing, 14, 5);
 }
 
 function drawSign() {
